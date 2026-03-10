@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowApp | Creator-First Social</title>
+    
+    <!-- Scripts -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg: #0A0A0A;
+            --card: #141414;
+            --coral: #FF4D5A;
+            --mint: #00F5C4;
+        }
+        body {
+            background-color: var(--bg);
+            color: white;
+            font-family: 'DM Sans', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        .font-syne { font-family: 'Syne', sans-serif; }
+        
+        /* Video Scrolling logic */
+        .feed-container {
+            height: 100vh;
+            scroll-snap-type: y mandatory;
+            overflow-y: scroll;
+            scrollbar-width: none;
+        }
+        .feed-container::-webkit-scrollbar { display: none; }
+        .video-slide {
+            height: 100vh;
+            scroll-snap-align: start;
+            position: relative;
+            background: black;
+        }
+        
+        /* Animations */
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-250px) scale(1.5); opacity: 0; }
+        }
+        .gift-anim {
+            position: absolute;
+            bottom: 100px;
+            right: 20px;
+            animation: floatUp 1.5s ease-out forwards;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .nav-blur {
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(10px);
+        }
+        
+        .coral-btn { background: var(--coral); transition: transform 0.2s; }
+        .coral-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Simplified Icon Components (Ensures they work without external icon deps) ---
+        const Icon = ({ name, size = 24, color = "currentColor" }) => {
+            const icons = {
+                home: <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>,
+                search: <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>,
+                plus: <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/>,
+                user: <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>,
+                heart: <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>,
+                gift: <path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>,
+                sparkles: <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>,
+                live: <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>
+            };
+            return (
+                <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {icons[name] || <circle cx="12" cy="12" r="10" />}
+                </svg>
+            );
+        };
+
+        const MOCK_VIDEOS = [
+            { id: 1, creator: "design_king", caption: "New setup is fire! 🔥 #tech #minimal", music: "Original Audio", url: "https://v.ftcdn.net/05/52/64/07/700_F_552640700_mOqH7H0vC7BvH0yD9KkM4UuY9S3v9v9m_ST.mp4" },
+            { id: 2, creator: "nature_vibes", caption: "Morning in Bali 🌊", music: "Chill Lo-fi", url: "https://v.ftcdn.net/05/14/01/53/700_F_514015381_P7I48tD5v0S4E5U7S9K3F9n3I4m7r7z9_ST.mp4" }
+        ];
+
+        const FlowApp = () => {
+            const [page, setPage] = useState('home');
+            const [floatingGifts, setFloatingGifts] = useState([]);
+            const [isLiked, setIsLiked] = useState({});
+
+            const triggerGift = (type) => {
+                const id = Date.now();
+                const emojis = { rose: '🌹', rocket: '🚀', gem: '💎' };
+                setFloatingGifts(prev => [...prev, { id, emoji: emojis[type] }]);
+                setTimeout(() => {
+                    setFloatingGifts(prev => prev.filter(g => g.id !== id));
+                }, 1500);
+            };
+
+            // --- SUB-COMPONENTS ---
+
+            const Nav = () => (
+                <div className="fixed bottom-0 w-full max-w-[500px] nav-blur border-t border-gray-800 flex justify-around py-4 z-50">
+                    <button onClick={() => setPage('home')} className={page === 'home' ? 'text-[#FF4D5A]' : 'text-gray-400'}><Icon name="home" /></button>
+                    <button onClick={() => setPage('explore')} className={page === 'explore' ? 'text-[#FF4D5A]' : 'text-gray-400'}><Icon name="search" /></button>
+                    <button onClick={() => setPage('upload')} className="bg-[#FF4D5A] p-2 rounded-xl text-white -mt-2"><Icon name="plus" /></button>
+                    <button onClick={() => setPage('dashboard')} className={page === 'dashboard' ? 'text-[#FF4D5A]' : 'text-gray-400'}><Icon name="sparkles" /></button>
+                    <button onClick={() => setPage('profile')} className={page === 'profile' ? 'text-[#FF4D5A]' : 'text-gray-400'}><Icon name="user" /></button>
+                </div>
+            );
+
+            // --- PAGES ---
+
+            const FeedPage = () => (
+                <div className="feed-container">
+                    {MOCK_VIDEOS.map(v => (
+                        <div key={v.id} className="video-slide">
+                            <video 
+                                className="w-full h-full object-cover"
+                                src={v.url}
+                                loop 
+                                muted 
+                                autoPlay 
+                                playsInline
+                            />
+                            
+                            {/* Overlay UI */}
+                            <div className="absolute bottom-24 left-4 right-16">
+                                <h3 className="font-bold text-lg font-syne">@{v.creator}</h3>
+                                <p className="text-sm mt-1">{v.caption}</p>
+                                <div className="flex items-center gap-2 mt-3 text-xs text-[#00F5C4] font-bold">
+                                    <div className="animate-spin"><Icon name="sparkles" size={14} /></div>
+                                    <span>AI Suggested: #viral #creator</span>
+                                </div>
+                            </div>
+
+                            {/* Sidebar Actions */}
+                            <div className="absolute bottom-24 right-4 flex flex-col gap-6 items-center">
+                                <button onClick={() => setIsLiked({...isLiked, [v.id]: !isLiked[v.id]})} className="flex flex-col items-center">
+                                    <Icon name="heart" color={isLiked[v.id] ? "#FF4D5A" : "white"} />
+                                    <span className="text-xs mt-1">12k</span>
+                                </button>
+                                <button onClick={() => triggerGift('rose')} className="flex flex-col items-center">
+                                    <div className="bg-[#FF4D5A]/20 p-3 rounded-full border border-[#FF4D5A]/50 text-[#FF4D5A]">
+                                        <Icon name="gift" />
+                                    </div>
+                                    <span className="text-xs mt-1">Gift</span>
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+
+            const Dashboard = () => (
+                <div className="p-6 pt-12">
+                    <h1 className="text-3xl font-syne mb-2">Creator Hub</h1>
+                    <p className="text-gray-400 text-sm mb-8">AI insights for @alex_flow</p>
+
+                    <div className="bg-gradient-to-br from-[#FF4D5A] to-[#ff8e53] p-6 rounded-[32px] mb-8">
+                        <p className="text-white/80 text-xs font-bold uppercase tracking-widest">Available Balance</p>
+                        <h2 className="text-4xl font-syne mt-2">$1,240.50</h2>
+                        <button className="mt-6 w-full bg-white text-black py-3 rounded-2xl font-bold text-sm">Request Payout (Stripe)</button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-8">
+                        <div className="bg-[#141414] p-4 rounded-2xl border border-gray-800">
+                            <Icon name="sparkles" color="#00F5C4" size={20} />
+                            <p className="text-xs text-gray-500 mt-2">Views this week</p>
+                            <p className="text-xl font-bold font-syne">+45.2k</p>
+                        </div>
+                        <div className="bg-[#141414] p-4 rounded-2xl border border-gray-800">
+                            <Icon name="gift" color="#FF4D5A" size={20} />
+                            <p className="text-xs text-gray-500 mt-2">Gifts earned</p>
+                            <p className="text-xl font-bold font-syne">892</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-[#141414] border border-[#00F5C4]/30 p-5 rounded-2xl">
+                        <div className="flex items-center gap-2 text-[#00F5C4] mb-3">
+                            <Icon name="sparkles" size={18} />
+                            <span className="font-bold text-sm">Gemini AI Growth Tip</span>
+                        </div>
+                        <p className="text-sm text-gray-300 leading-relaxed">
+                            "Your FoodSpace videos perform 40% better on Tuesday evenings. Try adding more 'Behind the Scenes' content to boost engagement."
+                        </p>
+                    </div>
+                </div>
+            );
+
+            const Upload = () => (
+                <div className="p-6 pt-12">
+                    <h1 className="text-2xl font-syne mb-6">Create Post</h1>
+                    <div className="aspect-[9/12] bg-[#141414] border-2 border-dashed border-gray-800 rounded-3xl flex flex-col items-center justify-center text-gray-500 mb-6">
+                        <Icon name="plus" size={48} />
+                        <p className="mt-2 font-bold">Select Video</p>
+                    </div>
+                    <div className="space-y-4">
+                        <div className="bg-[#141414] p-4 rounded-2xl">
+                            <p className="text-xs text-gray-500 mb-2 font-bold uppercase">AI Caption Generator</p>
+                            <div className="flex gap-2">
+                                <input className="flex-1 bg-transparent border-none outline-none text-sm" placeholder="Type a few words..." />
+                                <button className="text-[#FF4D5A] font-bold text-sm">Magic ✨</button>
+                            </div>
+                        </div>
+                        <button className="w-full bg-[#00F5C4] text-black font-bold py-4 rounded-2xl mt-4">Post to FlowApp</button>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="flex justify-center bg-black min-h-screen">
+                    <div className="w-full max-w-[500px] bg-[#0A0A0A] relative min-h-screen pb-20 shadow-2xl overflow-hidden">
+                        
+                        {/* Gift Animation Layer */}
+                        {floatingGifts.map(g => (
+                            <div key={g.id} className="gift-anim text-5xl">{g.emoji}</div>
+                        ))}
+
+                        {page === 'home' && <FeedPage />}
+                        {page === 'dashboard' && <Dashboard />}
+                        {page === 'upload' && <Upload />}
+                        {page === 'profile' && <div className="p-10 text-center font-syne pt-40">Profile coming soon...</div>}
+                        {page === 'explore' && <div className="p-10 text-center font-syne pt-40 text-[#00F5C4]">Explore Spaces...</div>}
+
+                        <Nav />
+                    </div>
+                </div>
+            );
+        };
+
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<FlowApp />);
+    </script>
+</body>
+</html>
